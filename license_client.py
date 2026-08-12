@@ -55,6 +55,24 @@ def login(license_key: str) -> dict:
     return result
 
 
+def login_token(token: str) -> dict:
+    serial, cpu = pc_identity()
+    result = _post("/v1/token/verify", {"token": token, "serial": serial, "cpu": cpu})
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.write_text(json.dumps({**result, "serial": serial, "cpu": cpu}), encoding="utf-8")
+    return result
+
+
+def login_account(username: str, password: str) -> dict:
+    serial, cpu = pc_identity()
+    result = _post("/v1/account/login", {
+        "username": username, "password": password, "serial": serial, "cpu": cpu,
+    })
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.write_text(json.dumps({**result, "serial": serial, "cpu": cpu}), encoding="utf-8")
+    return result
+
+
 def cached_session() -> dict | None:
     try:
         data = json.loads(CACHE_FILE.read_text(encoding="utf-8"))

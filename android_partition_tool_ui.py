@@ -64,6 +64,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
@@ -80,7 +81,7 @@ import license_client
 import updater
 
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 MAIN_BACKEND = BASE_DIR / "direct_adb_usb.py"
 LUN_EXTRACTOR = BASE_DIR / "lun_slice_extractor.py"
@@ -227,7 +228,7 @@ class MainWindow(QMainWindow):
         self.flash_rec_button.clicked.connect(self.flash_recovery_ramdisk_zip)
         self.adb_pin_button = QPushButton("ADB Set PIN")
         self.adb_pin_button.clicked.connect(self.set_adb_pin)
-        self.license_button = QPushButton("License Login")
+        self.license_button = QPushButton("Account Login")
         self.license_button.clicked.connect(self.license_login)
         self.update_button = QPushButton("Check Updates")
         self.update_button.clicked.connect(self.check_for_updates)
@@ -534,6 +535,8 @@ class MainWindow(QMainWindow):
             self.progress.setValue(100)
 
     def check_device(self, automatic_retry: bool = False) -> None:
+        if not automatic_retry and not self.require_license():
+            return
         if not automatic_retry:
             self.usb_recovery_attempted = False
         if self.fastboot_checkbox.isChecked():
@@ -1081,35 +1084,53 @@ class MainWindow(QMainWindow):
     def _update_action_buttons(self, *_args) -> None:
         rows = self._selected_rows()
         busy = self.process is not None and self.process.state() != QProcess.NotRunning
-        licensed = self.license_session is not None
         self.backup_button.setEnabled(
-            licensed and bool(rows) and not busy and not self.fastboot_checkbox.isChecked()
+            bool(rows) and not busy and not self.fastboot_checkbox.isChecked()
         )
-        self.write_button.setEnabled(licensed and bool(rows) and not busy)
-        self.flash_rec_button.setEnabled(licensed and not busy)
+        self.write_button.setEnabled(bool(rows) and not busy)
+        self.flash_rec_button.setEnabled(not busy)
         self.adb_pin_button.setEnabled(not busy)
         self.license_button.setEnabled(not busy)
         self._update_header_checkbox()
 
-    def license_login(self) -> None:
-        key, accepted = QInputDialog.getText(
-            self, "HW rec License", "Enter your license key:"
+    def require_license(self) -> bool:
+        self.license_session = license_client.cached_session()
+        if self.license_session is not None:
+            return True
+        return self.license_login()
+
+    def license_login(self) -> bool:
+        username, accepted = QInputDialog.getText(
+            self, "HW rec Login", "Enter username or 24-hour token:"
         )
-        if not accepted or not key.strip():
-            return
+        if not accepted or not username.strip():
+            return False
+        value = username.strip()
+        password = ""
+        if value.count(".") != 2:
+            password, accepted = QInputDialog.getText(
+                self, "HW rec Login", "Enter password:", QLineEdit.Password
+            )
+            if not accepted or not password:
+                return False
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            self.license_session = license_client.login(key.strip())
+            self.license_session = (
+                license_client.login_token(value)
+                if value.count(".") == 2
+                else license_client.login_account(value, password)
+            )
         except Exception as error:
             QMessageBox.warning(self, "License Login Failed", str(error))
-            return
+            return False
         finally:
             QApplication.restoreOverrideCursor()
         QMessageBox.information(
             self, "License Active", "Login successful. This PC is authorized for 24 hours."
         )
-        self.log("License login successful; 24-hour session active.")
+        self.log("Account login successful; 24-hour session active.")
         self._update_action_buttons()
+        return True
 
     def check_for_updates(self, _checked: bool = False, silent: bool = False) -> None:
         self.update_button.setEnabled(False)
@@ -1130,6 +1151,19 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(
                     self, "No Update", f"HW rec v{APP_VERSION} is the latest version."
                 )
+            return
+
+        if silent and getattr(sys, "frozen", False):
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                downloaded = updater.download_verified(release)
+                updater.launch_replacement(downloaded)
+            except Exception as error:
+                self.log(f"Automatic update failed: {error}")
+                return
+            finally:
+                QApplication.restoreOverrideCursor()
+            QApplication.quit()
             return
 
         notes = release.notes.strip()
@@ -1161,6 +1195,8 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
     def set_adb_pin(self) -> None:
+        if not self.require_license():
+            return
         answer = QMessageBox.warning(
             self, "Confirm ADB PIN",
             "Set the connected Android device lock-screen PIN to 123123?\n\n"
@@ -1209,6 +1245,8 @@ class MainWindow(QMainWindow):
 
     def flash_recovery_ramdisk_zip(self) -> None:
         """Extract recovery_ramdisk.img from ZIP and flash it over Fastboot."""
+        if not self.require_license():
+            return
         if (
             not self.device_model
             or self.device_model.casefold() == "unknown"
@@ -1284,6 +1322,8 @@ class MainWindow(QMainWindow):
         self._start_next_write()
 
     def read_selected(self) -> None:
+        if not self.require_license():
+            return
         if self.super_checkbox.isChecked():
             # Super mode is intentionally exclusive even if another row was
             # manually checked after enabling the toolbar option.
@@ -1754,6 +1794,8 @@ class MainWindow(QMainWindow):
         return errors
 
     def write_selected(self) -> None:
+        if not self.require_license():
+            return
         if self.fastboot_checkbox.isChecked():
             self._write_selected_fastboot()
             return
