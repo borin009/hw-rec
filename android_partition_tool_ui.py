@@ -53,8 +53,8 @@ if struct.calcsize("P") * 8 == 32:
         "The GUI requires 64-bit Python and the bundled runtime was not found."
     )
 
-from PySide6.QtCore import QProcess, QTimer, Qt
-from PySide6.QtGui import QColor, QFont, QIcon, QTextCursor
+from PySide6.QtCore import QProcess, QTimer, Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -77,9 +77,10 @@ from PySide6.QtWidgets import (
 )
 
 import license_client
+import updater
 
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 MAIN_BACKEND = BASE_DIR / "direct_adb_usb.py"
 LUN_EXTRACTOR = BASE_DIR / "lun_slice_extractor.py"
@@ -228,6 +229,8 @@ class MainWindow(QMainWindow):
         self.adb_pin_button.clicked.connect(self.set_adb_pin)
         self.license_button = QPushButton("License Login")
         self.license_button.clicked.connect(self.license_login)
+        self.update_button = QPushButton("Check Updates")
+        self.update_button.clicked.connect(self.check_for_updates)
         self.stop_button = QPushButton("Stop")
         self.stop_button.setObjectName("stopButton")
         self.stop_button.setEnabled(False)
@@ -249,6 +252,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.flash_rec_button)
         toolbar.addWidget(self.adb_pin_button)
         toolbar.addWidget(self.license_button)
+        toolbar.addWidget(self.update_button)
         toolbar.addWidget(self.stop_button)
         toolbar.addWidget(self.lun_checkbox)
         toolbar.addWidget(self.super_checkbox)
@@ -1106,6 +1110,55 @@ class MainWindow(QMainWindow):
         )
         self.log("License login successful; 24-hour session active.")
         self._update_action_buttons()
+
+    def check_for_updates(self, _checked: bool = False, silent: bool = False) -> None:
+        self.update_button.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            release = updater.check_for_update(APP_VERSION)
+        except Exception as error:
+            if not silent:
+                QMessageBox.warning(self, "Update Check Failed", str(error))
+            self.log(f"Update check failed: {error}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.update_button.setEnabled(True)
+
+        if release is None:
+            if not silent:
+                QMessageBox.information(
+                    self, "No Update", f"HW rec v{APP_VERSION} is the latest version."
+                )
+            return
+
+        notes = release.notes.strip()
+        if len(notes) > 1200:
+            notes = notes[:1200] + "..."
+        message = f"HW rec v{release.version} is available.\n\n{notes}\n\nDownload and install now?"
+        answer = QMessageBox.question(
+            self,
+            "HW rec Update Available",
+            message,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if not getattr(sys, "frozen", False):
+            QDesktopServices.openUrl(QUrl(release.page_url))
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            downloaded = updater.download_verified(release)
+            updater.launch_replacement(downloaded)
+        except Exception as error:
+            QMessageBox.critical(self, "Update Failed", str(error))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        QApplication.quit()
 
     def set_adb_pin(self) -> None:
         answer = QMessageBox.warning(
@@ -3831,6 +3884,7 @@ def main() -> int:
         app.setWindowIcon(QIcon(str(APP_ICON)))
     window = MainWindow()
     window.show()
+    QTimer.singleShot(3000, lambda: window.check_for_updates(silent=True))
     return app.exec()
 
 
