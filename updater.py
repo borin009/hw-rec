@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ class UpdateRelease:
     page_url: str
     download_url: str
     sha256: str
+    size: int = 0
 
 
 def version_tuple(value: str) -> tuple[int, ...]:
@@ -68,6 +70,7 @@ def check_for_update(current_version: str) -> UpdateRelease | None:
         page_url=str(release.get("html_url") or ""),
         download_url=str(executable["browser_download_url"]),
         sha256=digest.split(":", 1)[1].lower(),
+        size=int(executable.get("size") or 0),
     )
 
 
@@ -76,20 +79,41 @@ def download_verified(release: UpdateRelease) -> Path:
     update_dir.mkdir(parents=True, exist_ok=True)
     partial = update_dir / f"HW-rec-v{release.version}.exe.part"
     completed = partial.with_suffix("")
-    request = urllib.request.Request(release.download_url, headers={"User-Agent": USER_AGENT})
-    digest = hashlib.sha256()
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as output:
-            while chunk := response.read(1024 * 1024):
-                output.write(chunk)
-                digest.update(chunk)
-        if digest.hexdigest().lower() != release.sha256:
-            raise RuntimeError("Downloaded update failed SHA-256 verification.")
-        os.replace(partial, completed)
-        return completed
-    except Exception:
-        partial.unlink(missing_ok=True)
-        raise
+    last_error: Exception | None = None
+    for attempt in range(5):
+        offset = partial.stat().st_size if partial.is_file() else 0
+        headers = {"User-Agent": USER_AGENT}
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        request = urllib.request.Request(release.download_url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                resumed = offset > 0 and getattr(response, "status", 200) == 206
+                mode = "ab" if resumed else "wb"
+                if not resumed:
+                    offset = 0
+                with partial.open(mode) as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+            if release.size and partial.stat().st_size != release.size:
+                raise RuntimeError(
+                    f"Update download incomplete: received {partial.stat().st_size} "
+                    f"of {release.size} bytes."
+                )
+            digest = hashlib.sha256()
+            with partial.open("rb") as downloaded:
+                while chunk := downloaded.read(4 * 1024 * 1024):
+                    digest.update(chunk)
+            if digest.hexdigest().lower() != release.sha256:
+                partial.unlink(missing_ok=True)
+                raise RuntimeError("Downloaded update failed SHA-256 verification.")
+            os.replace(partial, completed)
+            return completed
+        except Exception as error:
+            last_error = error
+            if attempt < 4:
+                time.sleep(2 ** attempt)
+    raise RuntimeError(f"Update download failed after 5 attempts: {last_error}")
 
 
 def launch_replacement(downloaded_exe: Path) -> None:

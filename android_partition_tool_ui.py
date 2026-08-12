@@ -81,7 +81,7 @@ import license_client
 import updater
 
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 MAIN_BACKEND = BASE_DIR / "direct_adb_usb.py"
 LUN_EXTRACTOR = BASE_DIR / "lun_slice_extractor.py"
