@@ -1,0 +1,4 @@
+﻿<?xml version="1.0" ?>
+<data>
+  <program SECTOR_SIZE_IN_BYTES="4096" file_sector_offset="0" filename="LUN0_0_LUN0.bin" label="LUN0" num_partition_sectors="1024" physical_partition_number="0" size_in_KB="4096.0" sparse="false" start_byte_hex="0x0" start_sector="0" />
+</data>

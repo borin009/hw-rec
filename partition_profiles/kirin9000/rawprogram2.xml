@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" ?>
+<data>
+  <program SECTOR_SIZE_IN_BYTES="4096" file_sector_offset="0" filename="LUN2_0_GPT_Header.bin" label="PrimaryGPT" num_partition_sectors="34" physical_partition_number="2" size_in_KB="136.0" sparse="false" start_byte_hex="0x0" start_sector="0" />
+  <program SECTOR_SIZE_IN_BYTES="4096" file_sector_offset="0" filename="LUN2_1_frp.bin" label="frp" num_partition_sectors="128" physical_partition_number="2" size_in_KB="512.0" sparse="false" start_byte_hex="0x80000" start_sector="128" />
+  <program SECTOR_SIZE_IN_BYTES="4096" file_sector_offset="0" filename="LUN2_2_persist.bin" label="persist" num_partition_sectors="1536" physical_partition_number="2" size_in_KB="6144.0" sparse="false" start_byte_hex="0x100000" start_sector="256" />
+  <program SECTOR_SIZE_IN_BYTES="4096" file_sector_offset="0" filename="LUN2_3_reserved1.bin" label="reserved1" num_partition_sectors="256" physical_partition_number="2" size_in_KB="1024.0" sparse="false" start_byte_hex="0x700000" start_sector="1792" />
+</data>
