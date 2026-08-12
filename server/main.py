@@ -9,7 +9,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-DATABASE_URL = os.environ["DATABASE_URL"].replace("postgres://", "postgresql+psycopg://", 1)
+DATABASE_URL = os.environ["DATABASE_URL"]
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL.removeprefix("postgres://")
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL.removeprefix("postgresql://")
 JWT_SECRET = os.environ["JWT_SECRET"]
 ADMIN_KEY = os.environ["ADMIN_KEY"]
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
