@@ -53,8 +53,8 @@ if struct.calcsize("P") * 8 == 32:
         "The GUI requires 64-bit Python and the bundled runtime was not found."
     )
 
-from PySide6.QtCore import QProcess, QTimer, Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QTextCursor
+from PySide6.QtCore import QProcess, QTimer, Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -81,7 +81,7 @@ import license_client
 import updater
 
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 MAIN_BACKEND = BASE_DIR / "direct_adb_usb.py"
 LUN_EXTRACTOR = BASE_DIR / "lun_slice_extractor.py"
@@ -230,8 +230,6 @@ class MainWindow(QMainWindow):
         self.adb_pin_button.clicked.connect(self.set_adb_pin)
         self.license_button = QPushButton("Account Login")
         self.license_button.clicked.connect(self.license_login)
-        self.update_button = QPushButton("Check Updates")
-        self.update_button.clicked.connect(self.check_for_updates)
         self.stop_button = QPushButton("Stop")
         self.stop_button.setObjectName("stopButton")
         self.stop_button.setEnabled(False)
@@ -253,7 +251,6 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.flash_rec_button)
         toolbar.addWidget(self.adb_pin_button)
         toolbar.addWidget(self.license_button)
-        toolbar.addWidget(self.update_button)
         toolbar.addWidget(self.stop_button)
         toolbar.addWidget(self.lun_checkbox)
         toolbar.addWidget(self.super_checkbox)
@@ -1132,66 +1129,25 @@ class MainWindow(QMainWindow):
         self._update_action_buttons()
         return True
 
-    def check_for_updates(self, _checked: bool = False, silent: bool = False) -> None:
-        self.update_button.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+    def check_for_updates(self) -> None:
         try:
             release = updater.check_for_update(APP_VERSION)
         except Exception as error:
-            if not silent:
-                QMessageBox.warning(self, "Update Check Failed", str(error))
             self.log(f"Update check failed: {error}")
             return
-        finally:
-            QApplication.restoreOverrideCursor()
-            self.update_button.setEnabled(True)
 
         if release is None:
-            if not silent:
-                QMessageBox.information(
-                    self, "No Update", f"HW rec v{APP_VERSION} is the latest version."
-                )
             return
 
-        if silent and getattr(sys, "frozen", False):
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            try:
-                downloaded = updater.download_verified(release)
-                updater.launch_replacement(downloaded)
-            except Exception as error:
-                self.log(f"Automatic update failed: {error}")
-                return
-            finally:
-                QApplication.restoreOverrideCursor()
-            QApplication.quit()
-            return
-
-        notes = release.notes.strip()
-        if len(notes) > 1200:
-            notes = notes[:1200] + "..."
-        message = f"HW rec v{release.version} is available.\n\n{notes}\n\nDownload and install now?"
-        answer = QMessageBox.question(
-            self,
-            "HW rec Update Available",
-            message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if answer != QMessageBox.Yes:
-            return
         if not getattr(sys, "frozen", False):
-            QDesktopServices.openUrl(QUrl(release.page_url))
+            self.log(f"Update v{release.version} is available for packaged builds.")
             return
-
-        QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             downloaded = updater.download_verified(release)
             updater.launch_replacement(downloaded)
         except Exception as error:
-            QMessageBox.critical(self, "Update Failed", str(error))
+            self.log(f"Automatic update failed: {error}")
             return
-        finally:
-            QApplication.restoreOverrideCursor()
         QApplication.quit()
 
     def set_adb_pin(self) -> None:
@@ -2856,6 +2812,9 @@ class MainWindow(QMainWindow):
         by_lun: dict[int, list[int]] = {}
         xml_rows = self.completed_reads or self.backup_xml_rows
         for row in xml_rows:
+            name_item = self.table.item(row, 3)
+            if name_item and name_item.text().strip().casefold() == "userdata":
+                continue
             disk = self.table.item(row, 1).text()
             match = re.fullmatch(r"LUN(\d+)", disk)
             if not match:
@@ -2869,6 +2828,8 @@ class MainWindow(QMainWindow):
             ):
                 number = int(self.table.item(row, 2).text())
                 name = self.table.item(row, 3).text()
+                if name.strip().casefold() == "userdata":
+                    continue
                 start_lba = int(self.table.item(row, 4).text())
                 size = int(self.table.item(row, 6).data(Qt.UserRole) or 0)
                 filename = Path(self.table.item(row, 8).text()).name
@@ -3926,7 +3887,7 @@ def main() -> int:
         app.setWindowIcon(QIcon(str(APP_ICON)))
     window = MainWindow()
     window.show()
-    QTimer.singleShot(3000, lambda: window.check_for_updates(silent=True))
+    QTimer.singleShot(3000, window.check_for_updates)
     return app.exec()
 
 
