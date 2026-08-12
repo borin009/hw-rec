@@ -2,6 +2,7 @@ services:
   - type: web
     name: hw-rec-api
     runtime: python
+    plan: free
     rootDir: server
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
@@ -17,5 +18,6 @@ services:
         generateValue: true
 databases:
   - name: hw-rec-db
+    plan: free
     databaseName: hw_rec
     user: hw_rec
