@@ -76,6 +76,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import license_client
+
 
 APP_VERSION = "1.0.0"
 BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -173,6 +175,7 @@ class MainWindow(QMainWindow):
         self.usb_recovery_attempted = False
         self.usb_recovery_original_error = ""
         self.auto_backup_running = False
+        self.license_session = license_client.cached_session()
         self.write_watchdog = QTimer(self)
         self.write_watchdog.setInterval(1000)
         self.write_watchdog.timeout.connect(self._check_write_stall)
@@ -223,6 +226,8 @@ class MainWindow(QMainWindow):
         self.flash_rec_button.clicked.connect(self.flash_recovery_ramdisk_zip)
         self.adb_pin_button = QPushButton("ADB Set PIN")
         self.adb_pin_button.clicked.connect(self.set_adb_pin)
+        self.license_button = QPushButton("License Login")
+        self.license_button.clicked.connect(self.license_login)
         self.stop_button = QPushButton("Stop")
         self.stop_button.setObjectName("stopButton")
         self.stop_button.setEnabled(False)
@@ -243,6 +248,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.write_button)
         toolbar.addWidget(self.flash_rec_button)
         toolbar.addWidget(self.adb_pin_button)
+        toolbar.addWidget(self.license_button)
         toolbar.addWidget(self.stop_button)
         toolbar.addWidget(self.lun_checkbox)
         toolbar.addWidget(self.super_checkbox)
@@ -1071,13 +1077,35 @@ class MainWindow(QMainWindow):
     def _update_action_buttons(self, *_args) -> None:
         rows = self._selected_rows()
         busy = self.process is not None and self.process.state() != QProcess.NotRunning
+        licensed = self.license_session is not None
         self.backup_button.setEnabled(
-            bool(rows) and not busy and not self.fastboot_checkbox.isChecked()
+            licensed and bool(rows) and not busy and not self.fastboot_checkbox.isChecked()
         )
-        self.write_button.setEnabled(bool(rows) and not busy)
-        self.flash_rec_button.setEnabled(not busy)
+        self.write_button.setEnabled(licensed and bool(rows) and not busy)
+        self.flash_rec_button.setEnabled(licensed and not busy)
         self.adb_pin_button.setEnabled(not busy)
+        self.license_button.setEnabled(not busy)
         self._update_header_checkbox()
+
+    def license_login(self) -> None:
+        key, accepted = QInputDialog.getText(
+            self, "HW rec License", "Enter your license key:"
+        )
+        if not accepted or not key.strip():
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.license_session = license_client.login(key.strip())
+        except Exception as error:
+            QMessageBox.warning(self, "License Login Failed", str(error))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        QMessageBox.information(
+            self, "License Active", "Login successful. This PC is authorized for 24 hours."
+        )
+        self.log("License login successful; 24-hour session active.")
+        self._update_action_buttons()
 
     def set_adb_pin(self) -> None:
         answer = QMessageBox.warning(

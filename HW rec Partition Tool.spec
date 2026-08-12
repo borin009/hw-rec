@@ -12,6 +12,7 @@ a = Analysis(
         ('direct_fastboot_usb.py', '.'),
         ('lun_slice_extractor.py', '.'),
         ('huawei_update_app_scanner.py', '.'),
+        ('license_client.py', '.'),
         ('restart_recovery_usb.ps1', '.'),
         ('HW-logo-red-transparent.ico', '.'),
         ('partition_profiles', 'partition_profiles'),
